@@ -1,292 +1,430 @@
-Create a Python program that analyzes **upcoming soccer matches** from the GSB Uganda sportsbook:
+# Over 1.5 Goals — Match Analysis Tool
 
-https://gsb.ug/sportsbook/upcoming
+**Specification for a Python application**
 
-### Main objective
+Build a Python program that analyses **upcoming soccer matches** listed on the GSB Uganda sportsbook and identifies those with the strongest statistical likelihood of finishing with **Over 1.5 total goals** (two or more goals).
 
-The program should find **all available upcoming soccer matches for the current day** and identify the matches with the strongest statistical likelihood of ending with **Over 1.5 total goals** (2 or more goals).
+Source page: `https://gsb.ug/sportsbook/upcoming`
 
-The program must **not place bets automatically**. It should only collect data, analyze the matches, calculate probabilities, and present the best selections.
+---
 
-### 1. Collect upcoming matches
+## 0. Scope and non-goals
 
-Open the GSB Uganda upcoming sportsbook page and retrieve all available upcoming soccer matches for the current day.
+**In scope**
 
-Because the website may load matches dynamically using JavaScript, use an appropriate browser-automation framework such as **Playwright or Selenium** rather than relying only on `requests`.
+- Collecting upcoming fixtures and odds for the current day
+- Gathering supporting historical statistics from public football-data sources
+- Estimating an Over 1.5 probability per match with a documented model
+- Comparing that estimate against bookmaker odds to identify value
+- Ranking, categorising, and persisting the results to Excel
 
-For every match, collect:
+**Explicitly out of scope**
 
-* League/competition
-* Match date
-* Kick-off time
-* Home team
-* Away team
-* GSB Over 1.5 goals odds
-* Any other relevant available betting odds
+- **The program must never place, stage, or authorise a bet.** It performs no authenticated actions on the sportsbook and submits no forms. It is an analysis and recommendation tool only.
+- No account creation, login, or credential handling of any kind.
+- No circumvention of bot detection, CAPTCHAs, or access controls.
 
-Do not include matches that have already started or finished.
+**Before implementation**, review the GSB Uganda terms of service and `robots.txt`. If automated collection is disallowed, the fixture list must be supplied manually (see §2.4) rather than scraped. Document whichever path is taken.
 
-### 2. Gather external statistics
+All output is a statistical estimate. The program must never present a selection as a guaranteed outcome, and every report must carry a short disclaimer to that effect.
 
-For every upcoming match, obtain historical statistics from reliable publicly available football-data sources on the Internet.
+---
 
-The analysis should prioritize:
+## 1. Definitions
 
-#### A. Head-to-head statistics
+| Term | Definition |
+| --- | --- |
+| **Match day** | The calendar day in **Africa/Kampala (EAT, UTC+3)**, the sportsbook's local timezone. "Today's matches" means fixtures kicking off between 00:00:00 and 23:59:59 EAT. |
+| **Over 1.5** | The match finishes with a total of 2 or more goals, counting full time (90 minutes plus stoppage) only — no extra time, no penalties. |
+| **Match key** | A stable identifier for a fixture: `sha1(normalised_league + "|" + normalised_home + "|" + normalised_away + "|" + kickoff_utc_iso)`. Used for deduplication and for updating existing Excel rows. |
+| **Upcoming** | Kick-off is strictly in the future at the moment of collection. Live and completed matches are excluded. |
 
-Analyze previous meetings between the two teams, including:
+Store every timestamp internally in **UTC** and render it in EAT for display. This avoids off-by-one-day errors around midnight.
 
-* Number of previous H2H matches
-* Percentage ending Over 1.5 goals
-* Average total goals
-* Number of matches with 2+ goals
-* Most recent H2H results
+---
 
-Give H2H statistics significant weight, but do not rely on H2H alone.
+## 2. Collect upcoming matches
 
-#### B. Recent team form
+### 2.1 Retrieval
 
-Analyze the most recent matches of both teams, preferably the last 5–10 matches.
+The page loads fixtures dynamically via JavaScript, so plain `requests` is insufficient. Use a browser-automation framework — **Playwright** (preferred) or Selenium — and wait for the fixture list to finish rendering before parsing. Expand any lazy-loaded or paginated sections so that **all** available soccer fixtures for the day are captured, not a partial first page.
 
-Calculate:
+### 2.2 Fields to capture
 
-* Over 1.5 percentage
-* Average goals scored
-* Average goals conceded
-* Average total goals
-* Number of matches with 2+ goals
-* Goals scored in the last 5–10 matches
-* Goals conceded in the last 5–10 matches
+For every match:
 
-#### C. Home and away performance
+- League / competition
+- Match date (EAT and UTC)
+- Kick-off time (EAT and UTC)
+- Home team
+- Away team
+- Over 1.5 goals odds (decimal)
+- Under 1.5 goals odds (decimal) — required for margin removal in §5
+- Any other available markets worth recording (1X2, Over/Under 2.5, BTTS)
+- `collected_at` timestamp
 
-Analyze:
+### 2.3 Politeness and resilience
 
-* Home team's recent home matches
-* Away team's recent away matches
+- Set a descriptive User-Agent and a request rate that does not burden the site.
+- Cache the raw page response so that re-runs during development do not re-fetch.
+- Apply explicit timeouts and bounded retries with exponential backoff.
+- Exclude any fixture that has already kicked off or finished.
 
-Calculate the Over 1.5 percentage and average total goals separately for these situations.
+### 2.4 Manual fallback
 
-#### D. League statistics
+Support `--fixtures <path.csv>` to load fixtures from a CSV using the same columns as §2.2. This keeps the analysis pipeline usable if the site is unreachable, its markup changes, or automated collection is not permitted.
 
-Consider the overall goal-scoring characteristics of the league:
+---
 
-* Average goals per match
-* Over 1.5 percentage
-* Recent league goal trends
+## 3. Gather external statistics
 
-#### E. Other relevant information
+For every fixture, collect supporting statistics from reliable, publicly available football-data sources. Record the source and retrieval time for each statistic.
 
-Where reliable data is available, consider:
+### 3.1 Head-to-head
 
-* Injuries and suspensions
-* Expected lineups
-* Attacking and defensive strength
-* Recent changes in team performance
-* Motivation/importance of the match
-* Competition stage
-* Any other statistically relevant information
+- Number of previous meetings considered
+- Percentage ending Over 1.5
+- Average total goals
+- Count of meetings with 2+ goals
+- Most recent results
 
-Do not give excessive weight to speculative news.
+Weight head-to-head meaningfully but never as the sole input. Discount meetings older than roughly three years and those played under materially different circumstances (different division, heavily changed squads).
 
-### 3. Calculate Over 1.5 probability
+### 3.2 Recent form
 
-Create a statistical scoring/modeling system that estimates the probability that each match will finish with **at least 2 total goals**.
+Over the last 5–10 matches for each team:
 
-The model should combine the available evidence rather than simply using one statistic.
+- Over 1.5 percentage
+- Average goals scored
+- Average goals conceded
+- Average total goals
+- Count of matches with 2+ goals
 
-Give greater importance to:
+### 3.3 Home and away splits
 
-1. Recent goal-scoring statistics
-2. Recent Over 1.5 performance
-3. Home/away Over 1.5 performance
-4. H2H Over 1.5 performance
-5. Average goals scored and conceded
-6. League goal statistics
-7. Other reliable supporting information
+The home team's recent **home** matches and the away team's recent **away** matches, each with its own Over 1.5 percentage and average total goals.
 
-Produce an estimated probability such as:
+### 3.4 League context
 
-* 85%
-* 78%
-* 73%
-* 68%
+- League average goals per match
+- League Over 1.5 percentage
+- Recent scoring trend within the league
 
-The probability must be a model estimate, not a claim that the result is guaranteed.
+League baselines matter most when team-level samples are small, and should carry more weight as sample size falls (§4.3).
 
-### 4. Compare probability with bookmaker odds
+### 3.5 Supporting context
 
-For each match, calculate the implied probability from the GSB Over 1.5 odds:
+Where reliable data exists: injuries and suspensions, expected lineups, attacking and defensive strength ratings, notable recent changes in performance, match importance, and competition stage.
 
-Implied probability = 1 / decimal odds
+Speculative or unsourced news must not materially move the estimate.
 
-Then compare the bookmaker's implied probability with the model's estimated probability.
+---
 
-Calculate a value indicator such as:
+## 4. Estimate the Over 1.5 probability
 
-**Value = Model Probability − Implied Probability**
+### 4.1 Method
 
-This is important because the objective is not simply to find matches with high odds or high probability individually.
+Use a **Poisson goals model**, the standard approach for total-goals markets, which yields a defensible probability rather than an arbitrary score.
 
-The ideal selections should have:
+1. Estimate expected goals for each side — `λ_home` and `λ_away` — from attacking strength, opposing defensive strength, home advantage, and the league baseline.
+2. Let `λ = λ_home + λ_away` be the expected total goals.
+3. Then:
 
-* High probability of Over 1.5
-* Reasonably attractive odds
-* Positive statistical value
+```
+P(0 goals)  = exp(-λ)
+P(1 goal)   = λ * exp(-λ)
+P(Over 1.5) = 1 - exp(-λ) * (1 + λ)
+```
 
-### 5. Ranking system
+For example, `λ = 2.7` gives an Over 1.5 probability of about 75%; `λ = 3.0` gives about 80%.
 
-Rank all analyzed matches using a combined ranking system that considers both:
+A Dixon-Coles low-score correction may be applied, and a bivariate or negative-binomial variant may be substituted, provided the choice is documented.
 
-**A. Probability of Over 1.5 goals**
+### 4.2 Blending the evidence
 
-and
+Derive `λ_home` and `λ_away` from a weighted blend rather than any single statistic. Suggested starting weights, all configurable:
 
-**B. Attractive bookmaker odds/value**
+| Input | Weight |
+| --- | --- |
+| Recent form (goals scored / conceded) | 30% |
+| Home / away split performance | 20% |
+| Recent Over 1.5 rate | 20% |
+| Head-to-head | 15% |
+| League baseline | 10% |
+| Supporting context adjustments | 5% |
 
-The ranking should prioritize matches where there is a strong statistical probability while still offering relatively good odds.
+### 4.3 Shrinkage
 
-Do NOT simply sort by odds alone.
+With small samples, pull the estimate toward the league baseline in proportion to how little data is available. A team with three recorded matches must not be treated with the same confidence as one with twenty.
 
-Do NOT simply sort by probability alone.
+### 4.4 Output
 
-Create a combined score, for example:
+Report the probability as a percentage with one decimal (e.g. `84.2%`), accompanied by:
 
-* 60% weight: estimated Over 1.5 probability
-* 40% weight: value/odds attractiveness
+- `lambda_total` — the expected total goals
+- `confidence` — High / Medium / Low, driven by sample size and source agreement
+- `data_completeness` — the share of §3 inputs that were actually available
 
-Explain the scoring methodology in the program.
+---
 
-### 6. Output
+## 5. Compare against bookmaker odds
 
-Display the results in a clear table sorted from the **best selection to the weakest selection**.
+### 5.1 Implied probability
 
-The table should contain:
+The raw implied probability is:
 
-| Rank | Match | League | Time | O1.5 Odds | Model Probability | Implied Probability | Value | H2H O1.5 % | Recent O1.5 % | Rating |
-| ---- | ----- | ------ | ---- | --------- | ----------------- | ------------------- | ----- | ---------- | ------------- | ------ |
+```
+implied_raw = 1 / decimal_odds
+```
 
-For example:
+This figure **includes the bookmaker's margin** and therefore overstates the true implied probability. Comparing a model estimate directly against it biases every result toward "no value". Remove the margin using the Over/Under 1.5 pair:
 
-1. Team A vs Team B — 1.65 odds — 86% probability
-2. Team C vs Team D — 1.80 odds — 82% probability
-3. Team E vs Team F — 2.05 odds — 76% probability
+```
+overround    = (1 / odds_over) + (1 / odds_under)
+implied_fair = (1 / odds_over) / overround
+```
 
-### 7. Selection categories
+Report `implied_raw`, `implied_fair`, and `overround`. Use **`implied_fair`** for all value calculations. Where the Under 1.5 price is unavailable, fall back to `implied_raw` and flag the row as margin-unadjusted.
 
-After ranking all matches, divide the results into categories:
+### 5.2 Value metrics
 
-**🔥 TOP PICKS**
+```
+Value = model_probability - implied_fair
+EV    = (model_probability * decimal_odds) - 1
+```
 
-* Very high probability
-* Strong supporting statistics
-* Positive value where possible
+`Value` is the probability edge; `EV` is the expected return per unit staked and is the more comparable figure across different odds levels. Report both.
 
-**⭐ GOOD PICKS**
+An optional Kelly fraction may be shown for information only; the program recommends no stake sizes.
 
-* High probability
-* Reasonable statistical support
+The goal is neither the highest odds nor the highest probability in isolation, but fixtures combining a strong probability, a reasonable price, and a positive edge.
 
-**⚠️ HIGH-ODDS VALUE PICKS**
+---
 
-* Lower probability than the top picks
-* But unusually attractive odds/value
+## 6. Ranking
 
-Do not artificially create selections if the statistics do not support them.
+Rank on a **combined score**, never on odds alone and never on probability alone:
 
-If only 3 matches meet the criteria, show only 3.
+```
+score = (W_PROBABILITY * normalised_probability) + (W_VALUE * normalised_value)
+```
 
-### 8. Minimum statistical requirements
+Defaults: `W_PROBABILITY = 0.60`, `W_VALUE = 0.40`, both configurable and required to sum to 1.0.
 
-Avoid recommending a match when:
+Normalise both components to a 0–1 range across the analysed set before weighting, so that neither dominates through scale alone. Break ties by higher model probability, then by higher confidence.
 
-* There is insufficient historical data
-* Recent statistics strongly contradict the selection
-* The estimated probability is too low
-* The available data is unreliable
-* The bookmaker odds provide poor value
+The scoring methodology must be documented in the code and restated in the README.
 
-Allow the minimum probability threshold to be configured in the Python script, for example:
+---
 
-MIN_PROBABILITY = 70
+## 7. Selection categories
 
-Also allow the user to configure:
+After ranking, group the qualifying matches:
 
-MIN_ODDS = 1.20
-MAX_ODDS = 5.00
+- **TOP PICKS** — very high probability, strong supporting statistics, positive value where available
+- **GOOD PICKS** — high probability with reasonable statistical support
+- **HIGH-ODDS VALUE PICKS** — lower probability than the top group, but an unusually attractive price and a clear positive edge
 
-### 9. Data quality
+Category boundaries are configurable. **Never pad a category.** If only three matches meet the criteria, report three. If none do, report none and say so plainly.
 
-The program should clearly identify where each statistic came from.
+---
 
-Do not fabricate missing statistics.
+## 8. Qualification thresholds
 
-If a data source cannot provide information for a particular match, mark that statistic as unavailable rather than guessing.
+Exclude a match from the recommendations when any of the following holds:
 
-Handle:
+- Insufficient historical data (below the configured minimum sample)
+- Recent statistics materially contradict the selection
+- The estimated probability falls below the minimum
+- Available data is unreliable or self-contradictory
+- The odds sit outside the configured range, or the edge is negative
 
-* Missing data
-* Duplicate matches
-* Team-name differences between websites
-* API errors
-* Website timeouts
-* Rate limits
-* Dynamically loaded pages
+All thresholds are configurable:
 
-The program should log errors without stopping the entire analysis.
+```python
+MIN_PROBABILITY  = 70.0   # percent
+MIN_ODDS         = 1.20
+MAX_ODDS         = 5.00
+MIN_VALUE        = 0.00   # model probability minus fair implied
+MIN_H2H_MATCHES  = 3
+MIN_FORM_MATCHES = 5
+```
 
-### 10. Final report
+Excluded matches still appear in the full results sheet (§9.4) with the exclusion reason recorded — they are filtered from the recommendations, not from the record.
 
-At the end, display a concise report such as:
+---
 
+## 9. Excel output
+
+Every run persists its results to an Excel workbook. This is a primary requirement, not an optional export.
+
+### 9.1 Location and naming
+
+- Results are written to a dedicated folder, default `results/`, configurable via `OUTPUT_DIR`, and created automatically if absent.
+- The filename is the **match date in ISO format**: `YYYY-MM-DD.xlsx` — for example `results/2026-09-07.xlsx`.
+- ISO ordering is required because it sorts chronologically by filename and is unambiguous and filesystem-safe on Windows.
+
+### 9.2 One file per date — update, never duplicate
+
+**For a given date there must be exactly one workbook.**
+
+- If no file exists for the date, create it.
+- If a file already exists, **open it and update it in place.**
+- Never create `2026-09-07 (1).xlsx`, `2026-09-07_v2.xlsx`, `2026-09-07_1430.xlsx`, or any other suffixed or timestamped variant.
+
+Rows are **upserted on `match_key`** (§1):
+
+| Situation | Behaviour |
+| --- | --- |
+| Key already in the workbook | Overwrite that row with the newly computed values |
+| Key is new | Append it |
+| Key in the workbook but absent from this run | **Retain the row**, set `Status` to `Not in latest run`, and leave `Last Updated` untouched |
+
+Rows are never silently deleted — a fixture that disappears from the sportsbook (postponed, market pulled) stays visible with its history intact.
+
+Each row carries `First Seen (UTC)` and `Last Updated (UTC)`. After every upsert, **recompute the ranking across the full set** so the ordering reflects all known fixtures for that date, not only the latest run. Sheets and formatting the program does not own must be preserved.
+
+### 9.3 Write safety
+
+- Write atomically: build to a temporary file in the same directory, flush, then `os.replace()` onto the target. A crash mid-write must never leave a corrupt workbook.
+- Read and write with **openpyxl** so existing content survives; use pandas for computation only.
+- If the target file is locked because it is open in Excel — a common case on Windows — retry with backoff, then **fail with a clear, actionable message** ("close `results/2026-09-07.xlsx` and re-run"). Do **not** fall back to a differently named file: that would violate the no-duplicates rule. Cached results make the re-run inexpensive.
+
+### 9.4 Workbook structure
+
+**`Summary`** — run metadata: analysis date, run timestamps (first and latest), matches found, matches analysed, matches qualified, count per category, the configuration values used, and the estimate disclaimer.
+
+**`Ranked Selections`** — qualifying matches, best to weakest:
+
+| Rank | Match | League | Kick-off (EAT) | O1.5 Odds | Model Prob | Implied (Fair) | Value | EV | H2H O1.5 % | Recent O1.5 % | Confidence | Category | Score | Status | First Seen | Last Updated |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+
+**`All Matches`** — every fixture analysed, including those excluded, with an `Exclusion Reason` column and the full set of §3 statistics.
+
+**`Run Log`** — one row per execution: timestamp, duration, fixtures found, rows added, rows updated, warnings, errors.
+
+**`Data Sources`** — per-statistic provenance: source name, endpoint or URL, retrieval time, and any missing-data notes.
+
+### 9.5 Presentation
+
+Frozen header row, auto-filter enabled, sensible column widths, percentages formatted as percentages, odds to two decimals, and a conditional colour scale across the probability and value columns. The workbook should be readable without reformatting.
+
+---
+
+## 10. Console report
+
+Alongside the workbook, print a concise summary:
+
+```
 DATE: 7 September 2026
+MATCHES FOUND: 127
+MATCHES ANALYSED: 118
+QUALIFIED (OVER 1.5): 24
 
-MATCHES ANALYZED: 127
+TOP 10 SELECTIONS
+Rank | Match | Odds | Model Prob | Value | Confidence
+...
 
-QUALIFIED OVER 1.5 MATCHES: 24
+Saved to: results/2026-09-07.xlsx (18 rows updated, 6 added)
+```
 
-TOP 10 SELECTIONS:
+For each top selection, give a one- or two-sentence rationale grounded in the actual figures — for example:
 
-Rank | Match | Odds | Probability | Value | Rating
+> Over 1.5 probability 84.1% (expected total goals 3.30). Both sides have produced 2+ goals in 9 of their last 10; their last 10 meetings went Over 1.5 eight times. Fair implied probability 78.1%, giving an edge of +6.0 points.
 
-The program should also explain briefly **why each top selection was ranked highly**, for example:
+Close with the estimate disclaimer.
 
-"Over 1.5 probability: 84%. Both teams have produced 2+ goals in 9 of their last 10 matches, while their H2H meetings have produced Over 1.5 in 8 of the last 10."
+---
 
-### 11. Technical requirements
+## 11. Data quality and error handling
 
-Use Python 3.
+- **Never fabricate a statistic.** If a source cannot supply a figure, mark it unavailable and let it lower `data_completeness` and `confidence`.
+- Attribute every statistic to its source.
+- Normalise team names across sources using an alias map plus fuzzy matching (e.g. `rapidfuzz`). Below a configurable similarity threshold, flag the match for review rather than assuming a link.
+- Deduplicate fixtures on `match_key`.
+- Handle gracefully: missing data, duplicate listings, name mismatches, API errors, timeouts, rate limits, and dynamically loaded content.
+- A failure on one match must be logged and skipped without aborting the run. Log in a structured form to both console and file, at a configurable level.
+- Exit codes: `0` success, `1` completed with recoverable errors, `2` fatal.
 
-Prefer:
+---
 
-* Playwright for dynamically loading the GSB website
-* Pandas for data processing
-* NumPy/scikit-learn where useful for statistical modeling
-* BeautifulSoup only where appropriate
-* A reliable football statistics API or publicly accessible football-data source for historical statistics
+## 12. Technical requirements
 
-Structure the project cleanly:
+Python 3.11 or newer, running cleanly on Windows.
 
-/project
-main.py
-gsb_scraper.py
-statistics.py
-probability_model.py
-ranking.py
-config.py
-requirements.txt
-README.md
+| Purpose | Library |
+| --- | --- |
+| Browser automation | Playwright |
+| HTML parsing | BeautifulSoup (where appropriate) |
+| Data processing | pandas |
+| Numerics | NumPy, SciPy |
+| Excel read/write | openpyxl |
+| Name matching | rapidfuzz |
+| Configuration | pydantic-settings or python-dotenv |
+| Testing | pytest |
 
-The program should be easy to run on Windows.
+Machine-learning libraries are unnecessary for the Poisson model; introduce them only if a genuinely better-performing approach is implemented and evaluated.
 
-Provide installation instructions and all required dependencies.
+### Project structure
 
-### Most important requirement
+```
+project/
+    main.py                 CLI entry point and orchestration
+    config.py               configuration and thresholds
+    gsb_scraper.py          fixture and odds collection
+    statistics_provider.py  external statistics, with caching
+    probability_model.py    Poisson model and blending
+    odds.py                 margin removal, value, EV
+    ranking.py              combined score, categories
+    excel_writer.py         workbook create / upsert / format
+    reporting.py            console report
+    utils/
+        naming.py           team-name normalisation
+        logging.py          structured logging
+    tests/
+    requirements.txt
+    README.md
+    .env.example
+```
 
-The program's primary objective is:
+### Command line
 
-**Find today's upcoming soccer matches with the highest statistically estimated probability of finishing Over 1.5 goals, while also identifying matches offering attractive odds/value, and present them in a ranked list from strongest to weakest.**
+```
+python main.py                          analyse today (EAT)
+python main.py --date 2026-09-08        analyse a specific date
+python main.py --fixtures data.csv      use a manual fixture list
+python main.py --output-dir results     override the output folder
+python main.py --dry-run                analyse without writing Excel
+python main.py --min-probability 75     override a threshold
+```
 
-The program must analyze **all available upcoming soccer matches**, not just a small predefined selection.
+### Testing
 
-It must be an **analysis and recommendation tool only**, with no automatic bet placement.
+Unit tests covering, at minimum: the Poisson probability calculation against known values, margin removal, the ranking score, team-name normalisation, and — importantly — the **Excel upsert path**: creating a new file, updating an existing one, retaining rows absent from a later run, and confirming that no duplicate file is ever produced for a date.
+
+The README must document installation (including `playwright install`), configuration, usage, and the scoring methodology.
+
+---
+
+## 13. Acceptance criteria
+
+The implementation is complete when:
+
+1. All available upcoming soccer fixtures for the target day are collected, not a subset.
+2. Each fixture receives a documented Over 1.5 probability, or is excluded with a stated reason.
+3. Bookmaker margin is removed before any value calculation.
+4. Results are ranked by the combined probability-and-value score.
+5. Results are written to `results/YYYY-MM-DD.xlsx`.
+6. **Re-running for the same date updates that one workbook and produces no second file.**
+7. Rows from earlier runs that are absent from a later one are retained and marked, not deleted.
+8. Missing statistics are marked unavailable and never invented.
+9. A single match failure does not abort the run.
+10. No bet is ever placed, and no authenticated action is ever taken.
+
+---
+
+## Primary objective
+
+**Identify the day's upcoming soccer matches with the highest statistically estimated probability of finishing Over 1.5 goals, highlight those offering attractive odds and genuine value, present them ranked from strongest to weakest, and persist them to a single Excel workbook per date that is updated in place on every run.**
+
+This is an analysis and recommendation tool. It places no bets, and its probabilities are estimates rather than predictions of certain outcomes.
