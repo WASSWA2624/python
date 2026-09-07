@@ -28,6 +28,12 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from openpyxl import Workbook, load_workbook
+from openpyxl.formatting.rule import ColorScaleRule
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
+
 from config import DISCLAIMER, Config
 from models import (
     STATUS_NOT_IN_LATEST_RUN,
@@ -40,11 +46,6 @@ from models import (
     to_eat,
     to_utc,
 )
-from openpyxl import Workbook, load_workbook
-from openpyxl.formatting.rule import ColorScaleRule
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
-from openpyxl.worksheet.worksheet import Worksheet
 from ranking import ranked_selections
 from utils.logging import get_logger
 

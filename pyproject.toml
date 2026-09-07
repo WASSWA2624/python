@@ -1,15 +1,15 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
-name = "app"
-version = "0.1.0"
-description = "A Python starter project."
+name = "over15-goals"
+version = "1.0.0"
+description = "Analyses upcoming soccer fixtures for the probability of Over 1.5 goals."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Wilson Wasswa" }]
+
+# The application is a flat set of modules run as `python main.py`, not an
+# installable package. Runtime dependencies live in requirements.txt, which is
+# the install path the README documents.
 dependencies = []
 
 [project.optional-dependencies]
@@ -18,19 +18,19 @@ dev = [
     "ruff>=0.6",
 ]
 
-[project.scripts]
-app = "app.cli:main"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/app"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+# The modules sit at the project root, so that is what the tests import from.
+pythonpath = ["."]
+filterwarnings = ["error::DeprecationWarning"]
 
 [tool.ruff]
 line-length = 100
-src = ["src", "tests"]
+src = ["."]
+# Markdown is documentation, not source. The specification and the README
+# both quote Python verbatim, and reformatting those blocks would silently
+# edit the document being quoted.
+exclude = [".cache", "results", "logs", "_demo", "*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

@@ -38,3 +38,8 @@ htmlcov/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Over 1.5 Goals - run artefacts
+results/
+logs/
+.cache/

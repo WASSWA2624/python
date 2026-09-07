@@ -414,6 +414,34 @@ def _team_name(value: Any) -> str:
     return ""
 
 
+#: The name of the market itself - "Over/Under 1.5", "O/U 1.5", "Totals" -
+#: names both sides and so says nothing about which selection this is. It has
+#: to be removed before the side is decided, or every Under selection under
+#: such a market reads as an Over: the Under price would then be lost, and
+#: with it the margin removal that section 6.1 depends on.
+_MARKET_NAME_NOISE = re.compile(
+    r"\bover\s*[/|-]\s*under\b|\bunder\s*[/|-]\s*over\b|\bo\s*/\s*u\b|\btotals?\b",
+    flags=re.IGNORECASE,
+)
+
+_OVER_SELECTION = re.compile(r"\bover\b|\bo1\.5\b|\bmore\b|^o$")
+_UNDER_SELECTION = re.compile(r"\bunder\b|\bu1\.5\b|\bless\b|^u$")
+
+
+def classify_over_under(text: str) -> str | None:
+    """``"over"``, ``"under"`` or ``None`` for one selection's text.
+
+    Returns ``None`` when the text names both sides or neither, so an
+    ambiguous label is skipped rather than guessed at.
+    """
+    blob = _MARKET_NAME_NOISE.sub(" ", str(text).lower())
+    is_over = bool(_OVER_SELECTION.search(blob))
+    is_under = bool(_UNDER_SELECTION.search(blob))
+    if is_over == is_under:  # named both sides, or neither
+        return None
+    return "over" if is_over else "under"
+
+
 def _find_over_under_odds(node: dict) -> tuple[float | None, float | None]:
     """Locate Over/Under 1.5 prices anywhere beneath a fixture object.
 
@@ -433,9 +461,10 @@ def _find_over_under_odds(node: dict) -> tuple[float | None, float | None]:
         price = parse_decimal_odds(price)
         if price is None:
             continue
-        if re.search(r"\bover\b|^o$|\bo1\.5\b|\bmore\b", blob):
+        side = classify_over_under(blob)
+        if side == "over":
             over = over or price
-        elif re.search(r"\bunder\b|^u$|\bu1\.5\b|\bless\b", blob):
+        elif side == "under":
             under = under or price
     return over, under
 

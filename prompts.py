@@ -112,11 +112,25 @@ def is_interactive(
 # Parsing and validation (spec 2.4)
 # --------------------------------------------------------------------------
 def parse_hhmm(raw: str) -> time:
-    """Parse a 24-hour ``HH:MM`` clock time."""
+    """Parse a 24-hour ``HH:MM`` clock time.
+
+    ``14:30``, ``1430`` and ``14`` are all accepted; the digit lengths are
+    checked explicitly because ``strptime`` is greedy and would otherwise read
+    a bare ``"14"`` under ``%H%M`` as one minute past one, which is exactly the
+    silent coercion section 2.4 forbids.
+    """
     text = raw.strip()
     if not text:
         raise ValidationError("a time is required, in 24-hour HH:MM form")
-    for fmt in ("%H:%M", "%H%M", "%H"):
+
+    formats = [("%H:%M", None)]
+    if text.isdigit():
+        formats.append(("%H%M", 4))  # 1430
+        formats.append(("%H", len(text) if len(text) <= 2 else None))  # 14 or 9
+
+    for fmt, required_length in formats:
+        if required_length is not None and len(text) != required_length:
+            continue
         try:
             return datetime.strptime(text, fmt).time()
         except ValueError:
@@ -386,8 +400,7 @@ def _prompt_window(
             choice = "1"
         try:
             if choice == "1":
-                config.sources["window"] = SOURCE_PROMPT
-                return
+                return  # the default window keeps whatever source it had
             if choice == "2":
                 _prompt_next_hours(config, match_day, io, now)
                 return
@@ -454,7 +467,9 @@ def _prompt_probability(config: Config, io: PromptIO, warnings: list[str]) -> No
     for _ in range(MAX_ATTEMPTS):
         raw = io.read(f"Minimum probability %  [{default_value:.1f}]: ").strip()
         if raw == "":
-            config.sources["min_probability"] = SOURCE_PROMPT
+            # Enter accepts the default that was shown, which may itself have
+            # come from the environment. The value did not resolve from the
+            # prompt, so its recorded source is left as it was (spec 2.6).
             return
         try:
             value, warning = validate_probability(raw, config)
@@ -479,8 +494,7 @@ def _prompt_odds(config: Config, io: PromptIO, warnings: list[str]) -> None:
     for _ in range(MAX_ATTEMPTS):
         raw = io.read(f"Minimum odds           [{default_value:.2f}]: ").strip()
         if raw == "":
-            config.sources["min_odds"] = SOURCE_PROMPT
-            return
+            return  # as above: the shown default keeps its own source
         try:
             value, _ = validate_odds(raw, config)
         except ValidationError as exc:

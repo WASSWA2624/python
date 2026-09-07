@@ -17,9 +17,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
+      # Playwright is only needed to collect fixtures from the sportsbook, and
+      # no test does that - so its browser is deliberately not downloaded here.
       - name: Install
-        run: pip install -e ".[dev]"
+        run: |
+          pip install -r requirements.txt
+          pip install ruff pytest
+
       - name: Lint
         run: ruff check .
+
+      - name: Format
+        run: ruff format --check .
+
       - name: Test
+        # CI is set by GitHub Actions, so the run is unattended by definition:
+        # this also exercises the section 2.5 non-interactive path.
         run: pytest -q
