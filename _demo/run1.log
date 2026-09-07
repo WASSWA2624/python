@@ -1,0 +1,5 @@
+20:49:52 INFO    effective configuration  config=window=00:00-23:59 EAT (default) | min_probability=70.0% (default) | min_odds=1.20 (default)
+20:49:52 INFO    loaded fixtures from CSV  file=_demo\fixtures.csv count=7
+20:49:52 INFO    fixtures collected  count=7 day=2026-09-08 source=manual fixture list (_demo/fixtures.csv)
+20:49:52 INFO    statistics loaded  results=300 teams=14
+20:49:52 INFO    workbook written  path=_demo\results\2026-09-08.xlsx rows=7
