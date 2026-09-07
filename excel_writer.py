@@ -22,22 +22,15 @@ from __future__ import annotations
 
 import os
 import time as time_module
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence
-
-from openpyxl import Workbook, load_workbook
-from openpyxl.formatting.rule import ColorScaleRule
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
-from openpyxl.worksheet.worksheet import Worksheet
+from typing import Any
 
 from config import DISCLAIMER, Config
 from models import (
-    STATUS_ANALYSED,
     STATUS_NOT_IN_LATEST_RUN,
-    STATUS_OUTSIDE_WINDOW,
     UTC,
     AnalysisWindow,
     MatchRecord,
@@ -47,6 +40,11 @@ from models import (
     to_eat,
     to_utc,
 )
+from openpyxl import Workbook, load_workbook
+from openpyxl.formatting.rule import ColorScaleRule
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
 from ranking import ranked_selections
 from utils.logging import get_logger
 
@@ -151,7 +149,14 @@ ALL_MATCHES_COLUMNS: tuple[Column, ...] = (
     Column("Home Team", "home_team", 20, from_cell=_read_str),
     Column("Away Team", "away_team", 20, from_cell=_read_str),
     Column("Kick-off (EAT)", "kickoff_utc", 18, FORMAT_DATETIME, to_cell=_eat_naive),
-    Column("Kick-off (UTC)", "kickoff_utc", 18, FORMAT_DATETIME, to_cell=_utc_naive, from_cell=_read_utc),
+    Column(
+        "Kick-off (UTC)",
+        "kickoff_utc",
+        18,
+        FORMAT_DATETIME,
+        to_cell=_utc_naive,
+        from_cell=_read_utc,
+    ),
     Column("Status", "status", 22, from_cell=_read_str),
     Column("Exclusion Reason", "exclusion_reason", 46, from_cell=_read_str),
     Column("Rank", "rank", 7, from_cell=_read_int),
@@ -212,9 +217,30 @@ ALL_MATCHES_COLUMNS: tuple[Column, ...] = (
     Column("Unreliable Reason", "unreliable_reason", 34, from_cell=_read_str),
     Column("Fixture Source", "fixture_source", 26, from_cell=_read_str),
     Column("Stats Sources", "stats_sources", 26, from_cell=_read_str),
-    Column("Collected At (UTC)", "collected_at_utc", 18, FORMAT_DATETIME, to_cell=_utc_naive, from_cell=_read_utc),
-    Column("First Seen (UTC)", "first_seen_utc", 18, FORMAT_DATETIME, to_cell=_utc_naive, from_cell=_read_utc),
-    Column("Last Updated (UTC)", "last_updated_utc", 18, FORMAT_DATETIME, to_cell=_utc_naive, from_cell=_read_utc),
+    Column(
+        "Collected At (UTC)",
+        "collected_at_utc",
+        18,
+        FORMAT_DATETIME,
+        to_cell=_utc_naive,
+        from_cell=_read_utc,
+    ),
+    Column(
+        "First Seen (UTC)",
+        "first_seen_utc",
+        18,
+        FORMAT_DATETIME,
+        to_cell=_utc_naive,
+        from_cell=_read_utc,
+    ),
+    Column(
+        "Last Updated (UTC)",
+        "last_updated_utc",
+        18,
+        FORMAT_DATETIME,
+        to_cell=_utc_naive,
+        from_cell=_read_utc,
+    ),
 )
 
 #: ``Ranked Selections`` - exactly the columns section 10.4 tabulates.
@@ -293,9 +319,20 @@ class MergeOutcome:
 
 #: Fields describing the fixture and its markets - always refreshed.
 _MARKET_FIELDS = (
-    "league", "home_team", "away_team", "odds_over_15", "odds_under_15",
-    "odds_over_25", "odds_under_25", "odds_home", "odds_draw", "odds_away",
-    "odds_btts_yes", "odds_btts_no", "collected_at_utc", "fixture_source",
+    "league",
+    "home_team",
+    "away_team",
+    "odds_over_15",
+    "odds_under_15",
+    "odds_over_25",
+    "odds_under_25",
+    "odds_home",
+    "odds_draw",
+    "odds_away",
+    "odds_btts_yes",
+    "odds_btts_no",
+    "collected_at_utc",
+    "fixture_source",
 )
 
 
@@ -380,7 +417,10 @@ class ExcelStore:
         try:
             workbook = load_workbook(self.path, data_only=True)
         except Exception as exc:  # noqa: BLE001 - a damaged file must not abort
-            log.error("could not read the existing workbook", extra={"path": str(self.path), "error": str(exc)})
+            log.error(
+                "could not read the existing workbook",
+                extra={"path": str(self.path), "error": str(exc)},
+            )
             return []
         try:
             if SHEET_ALL not in workbook.sheetnames:
@@ -395,7 +435,9 @@ class ExcelStore:
             by_header = {column.header: column for column in ALL_MATCHES_COLUMNS}
             records: list[MatchRecord] = []
             for raw in rows:
-                values = dict(zip(headers, raw))
+                # Not strict: a workbook written by an older version may have
+                # fewer columns than the current schema, and that must still load.
+                values = dict(zip(headers, raw))  # noqa: B905
                 key = _read_str(values.get("Match Key")).strip()
                 if not key:
                     continue
@@ -425,7 +467,9 @@ class ExcelStore:
                     setattr(record, column.attribute, column.from_cell(values.get(header)))
                 records.append(record)
 
-            log.info("loaded existing workbook", extra={"path": str(self.path), "rows": len(records)})
+            log.info(
+                "loaded existing workbook", extra={"path": str(self.path), "rows": len(records)}
+            )
             return records
         finally:
             workbook.close()
@@ -478,9 +522,7 @@ class ExcelStore:
         self.directory.mkdir(parents=True, exist_ok=True)
         self._raise_if_locked()
 
-        workbook = (
-            load_workbook(self.path) if self.exists() else Workbook()
-        )
+        workbook = load_workbook(self.path) if self.exists() else Workbook()
         try:
             if not self.exists() and "Sheet" in workbook.sheetnames:
                 del workbook["Sheet"]
@@ -564,7 +606,7 @@ class ExcelStore:
     # -- sheet builders -------------------------------------------------
     @staticmethod
     def _style_header(sheet: Worksheet, columns: Sequence[str], widths: Sequence[int]) -> None:
-        for index, (header, width) in enumerate(zip(columns, widths), start=1):
+        for index, (header, width) in enumerate(zip(columns, widths, strict=True), start=1):
             cell = sheet.cell(row=1, column=index, value=header)
             cell.fill = HEADER_FILL
             cell.font = HEADER_FONT
@@ -583,7 +625,9 @@ class ExcelStore:
     ) -> None:
         for row_index, record in enumerate(records, start=2):
             for column_index, column in enumerate(columns, start=1):
-                cell = sheet.cell(row=row_index, column=column_index, value=_cell_value(record, column))
+                cell = sheet.cell(
+                    row=row_index, column=column_index, value=_cell_value(record, column)
+                )
                 if column.number_format:
                     cell.number_format = column.number_format
 
@@ -591,16 +635,22 @@ class ExcelStore:
 
         if records:
             for header in colour_scale_headers:
-                index = next((i for i, c in enumerate(columns, start=1) if c.header == header), None)
+                index = next(
+                    (i for i, c in enumerate(columns, start=1) if c.header == header), None
+                )
                 if index is None:
                     continue
                 letter = get_column_letter(index)
                 sheet.conditional_formatting.add(
                     f"{letter}2:{letter}{len(records) + 1}",
                     ColorScaleRule(
-                        start_type="min", start_color="F8696B",
-                        mid_type="percentile", mid_value=50, mid_color="FFEB84",
-                        end_type="max", end_color="63BE7B",
+                        start_type="min",
+                        start_color="F8696B",
+                        mid_type="percentile",
+                        mid_value=50,
+                        mid_color="FFEB84",
+                        end_type="max",
+                        end_color="63BE7B",
                     ),
                 )
 
@@ -609,8 +659,19 @@ class ExcelStore:
         selections = ranked_selections(list(records))
         self._write_table(sheet, RANKED_COLUMNS, selections, ("Model Prob", "Value"))
         if not selections:
-            sheet.cell(row=2, column=1, value="No matches qualified under the thresholds used for this run.")
-            sheet.cell(row=3, column=1, value="See the Summary sheet for the thresholds and the All Matches sheet for exclusion reasons.")
+            sheet.cell(
+                row=2,
+                column=1,
+                value="No matches qualified under the thresholds used for this run.",
+            )
+            sheet.cell(
+                row=3,
+                column=1,
+                value=(
+                    "See the Summary sheet for the thresholds, and All Matches "
+                    "for the reason each fixture was excluded."
+                ),
+            )
 
     def _write_all_matches(self, sheet: Worksheet, records: Sequence[MatchRecord]) -> None:
         ordered = sorted(

@@ -21,9 +21,10 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any
 
 from config import (
     SOURCE_DEFAULT,
@@ -32,7 +33,7 @@ from config import (
     SOURCE_PROMPT,
     Config,
 )
-from models import EAT, AnalysisWindow, eat_day_bounds, now_utc, to_eat
+from models import AnalysisWindow, eat_day_bounds, now_utc, to_eat
 
 #: Attempts allowed per setting before falling back to its default (spec 2.4).
 MAX_ATTEMPTS = 3
@@ -131,9 +132,7 @@ def parse_window_text(raw: str) -> tuple[time, time]:
     start_text, _, end_text = text.partition("-")
     start, end = parse_hhmm(start_text), parse_hhmm(end_text)
     if end <= start:
-        raise ValidationError(
-            f"the end ({end:%H:%M}) must follow the start ({start:%H:%M})"
-        )
+        raise ValidationError(f"the end ({end:%H:%M}) must follow the start ({start:%H:%M})")
     return start, end
 
 
@@ -149,9 +148,7 @@ def validate_probability(raw: str | float, config: Config) -> tuple[float, str |
         raise ValidationError("the minimum probability must be at most 100")
     warning = None
     if value > PROBABILITY_WARN_ABOVE:
-        warning = (
-            f"a minimum of {value:.1f}% is very high - almost nothing will qualify"
-        )
+        warning = f"a minimum of {value:.1f}% is very high - almost nothing will qualify"
     return value, warning
 
 
@@ -294,7 +291,9 @@ def resolve_configuration(
 
     # --- 2. decide whether to prompt ------------------------------------
     interactive = is_interactive(bool(getattr(args, "no_prompt", False)), env=env, stdin=stdin)
-    unresolved = [name for name in ("window", "min_probability", "min_odds") if name not in from_flag]
+    unresolved = [
+        name for name in ("window", "min_probability", "min_odds") if name not in from_flag
+    ]
 
     if not interactive or not unresolved:
         window = _build_window(config, match_day, now)
@@ -381,7 +380,7 @@ def _prompt_window(
     io.say("  [2] Next N hours")
     io.say("  [3] Custom window, HH:MM-HH:MM")
 
-    for attempt in range(1, MAX_ATTEMPTS + 1):
+    for _attempt in range(MAX_ATTEMPTS):
         choice = io.read("Choice [1]: ").strip()
         if choice == "":
             choice = "1"
@@ -427,7 +426,9 @@ def _prompt_next_hours(config: Config, match_day: date, io: PromptIO, now: datet
     raise ValidationError("hours ahead could not be read")
 
 
-def _prompt_custom_window(config: Config, match_day: date, io: PromptIO, now: datetime | None) -> None:
+def _prompt_custom_window(
+    config: Config, match_day: date, io: PromptIO, now: datetime | None
+) -> None:
     default_text = f"{config.window_start}-{config.window_end}"
     for _ in range(MAX_ATTEMPTS):
         raw = io.read(f"  Window HH:MM-HH:MM [{default_text}]: ").strip()

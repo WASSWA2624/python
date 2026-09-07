@@ -26,12 +26,10 @@ from __future__ import annotations
 
 import csv
 import io
-import json
-import math
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Iterable, Sequence
 
 from config import Config
 from models import (
@@ -179,8 +177,12 @@ class ResultsRepository:
         meetings.sort(key=lambda r: r.played_on, reverse=True)
         return meetings
 
-    def league_matches(self, league: str, *, before: date, limit: int | None = None) -> list[MatchResult]:
-        results = [r for r in self._by_league.get(normalise_league(league), []) if r.played_on < before]
+    def league_matches(
+        self, league: str, *, before: date, limit: int | None = None
+    ) -> list[MatchResult]:
+        results = [
+            r for r in self._by_league.get(normalise_league(league), []) if r.played_on < before
+        ]
         results.sort(key=lambda r: r.played_on, reverse=True)
         return results[:limit] if limit else results
 
@@ -319,7 +321,9 @@ class ResultsLoader:
 
     name = "base"
 
-    def load(self, repository: ResultsRepository, fixtures: Sequence[Fixture]) -> list[SourceRecord]:
+    def load(
+        self, repository: ResultsRepository, fixtures: Sequence[Fixture]
+    ) -> list[SourceRecord]:
         raise NotImplementedError
 
 
@@ -381,40 +385,101 @@ def season_codes(reference: date, seasons_back: int) -> list[str]:
 #: matching across borders - "Uganda Premier League" must never resolve to the
 #: English "Premier League" and be analysed on English results.
 DIVISION_COUNTRY: dict[str, str] = {
-    "E0": "england", "E1": "england", "E2": "england", "E3": "england",
-    "SC0": "scotland", "D1": "germany", "D2": "germany",
-    "I1": "italy", "I2": "italy", "SP1": "spain", "SP2": "spain",
-    "F1": "france", "F2": "france", "N1": "netherlands", "B1": "belgium",
-    "P1": "portugal", "T1": "turkey", "G1": "greece",
+    "E0": "england",
+    "E1": "england",
+    "E2": "england",
+    "E3": "england",
+    "SC0": "scotland",
+    "D1": "germany",
+    "D2": "germany",
+    "I1": "italy",
+    "I2": "italy",
+    "SP1": "spain",
+    "SP2": "spain",
+    "F1": "france",
+    "F2": "france",
+    "N1": "netherlands",
+    "B1": "belgium",
+    "P1": "portugal",
+    "T1": "turkey",
+    "G1": "greece",
 }
 
 #: Country words that may appear in a competition name, mapped to a country.
 COUNTRY_WORDS: dict[str, str] = {
-    "england": "england", "english": "england", "britain": "england",
-    "scotland": "scotland", "scottish": "scotland",
-    "germany": "germany", "german": "germany", "deutschland": "germany",
-    "italy": "italy", "italian": "italy", "italia": "italy",
-    "spain": "spain", "spanish": "spain", "espana": "spain",
-    "france": "france", "french": "france",
-    "netherlands": "netherlands", "dutch": "netherlands", "holland": "netherlands",
-    "belgium": "belgium", "belgian": "belgium",
-    "portugal": "portugal", "portuguese": "portugal",
-    "turkey": "turkey", "turkish": "turkey", "turkiye": "turkey",
-    "greece": "greece", "greek": "greece",
+    "england": "england",
+    "english": "england",
+    "britain": "england",
+    "scotland": "scotland",
+    "scottish": "scotland",
+    "germany": "germany",
+    "german": "germany",
+    "deutschland": "germany",
+    "italy": "italy",
+    "italian": "italy",
+    "italia": "italy",
+    "spain": "spain",
+    "spanish": "spain",
+    "espana": "spain",
+    "france": "france",
+    "french": "france",
+    "netherlands": "netherlands",
+    "dutch": "netherlands",
+    "holland": "netherlands",
+    "belgium": "belgium",
+    "belgian": "belgium",
+    "portugal": "portugal",
+    "portuguese": "portugal",
+    "turkey": "turkey",
+    "turkish": "turkey",
+    "turkiye": "turkey",
+    "greece": "greece",
+    "greek": "greece",
     # Countries with no free division feed here: naming one must block a match.
-    "uganda": "uganda", "ugandan": "uganda", "kenya": "kenya", "tanzania": "tanzania",
-    "rwanda": "rwanda", "nigeria": "nigeria", "ghana": "ghana", "egypt": "egypt",
-    "south africa": "south africa", "morocco": "morocco", "zambia": "zambia",
-    "brazil": "brazil", "brasil": "brazil", "argentina": "argentina", "chile": "chile",
-    "colombia": "colombia", "mexico": "mexico", "usa": "usa", "mls": "usa",
-    "japan": "japan", "china": "china", "korea": "korea", "india": "india",
-    "australia": "australia", "sweden": "sweden", "norway": "norway",
-    "denmark": "denmark", "finland": "finland", "poland": "poland",
-    "russia": "russia", "ukraine": "ukraine", "austria": "austria",
-    "switzerland": "switzerland", "swiss": "switzerland", "czech": "czech",
-    "croatia": "croatia", "serbia": "serbia", "romania": "romania",
-    "bulgaria": "bulgaria", "ireland": "ireland", "wales": "wales",
-    "israel": "israel", "saudi": "saudi arabia", "qatar": "qatar",
+    "uganda": "uganda",
+    "ugandan": "uganda",
+    "kenya": "kenya",
+    "tanzania": "tanzania",
+    "rwanda": "rwanda",
+    "nigeria": "nigeria",
+    "ghana": "ghana",
+    "egypt": "egypt",
+    "south africa": "south africa",
+    "morocco": "morocco",
+    "zambia": "zambia",
+    "brazil": "brazil",
+    "brasil": "brazil",
+    "argentina": "argentina",
+    "chile": "chile",
+    "colombia": "colombia",
+    "mexico": "mexico",
+    "usa": "usa",
+    "mls": "usa",
+    "japan": "japan",
+    "china": "china",
+    "korea": "korea",
+    "india": "india",
+    "australia": "australia",
+    "sweden": "sweden",
+    "norway": "norway",
+    "denmark": "denmark",
+    "finland": "finland",
+    "poland": "poland",
+    "russia": "russia",
+    "ukraine": "ukraine",
+    "austria": "austria",
+    "switzerland": "switzerland",
+    "swiss": "switzerland",
+    "czech": "czech",
+    "croatia": "croatia",
+    "serbia": "serbia",
+    "romania": "romania",
+    "bulgaria": "bulgaria",
+    "ireland": "ireland",
+    "wales": "wales",
+    "israel": "israel",
+    "saudi": "saudi arabia",
+    "qatar": "qatar",
 }
 
 
@@ -469,7 +534,9 @@ class FootballDataCoUkLoader(ResultsLoader):
         self.config = config
         self.downloader = CachedDownloader(config, "footballdata")
 
-    def load(self, repository: ResultsRepository, fixtures: Sequence[Fixture]) -> list[SourceRecord]:
+    def load(
+        self, repository: ResultsRepository, fixtures: Sequence[Fixture]
+    ) -> list[SourceRecord]:
         sources: list[SourceRecord] = []
         wanted: dict[str, str] = {}
         for fixture in fixtures:
@@ -510,17 +577,30 @@ class FootballDataCoUkLoader(ResultsLoader):
         return sources
 
     def _parse(self, payload: bytes, repository: ResultsRepository, league_name: str) -> int:
+        """Load one season file into the repository, returning the row count.
+
+        These files run to several hundred rows across twenty-odd columns, and
+        a full run may pull dozens of them, so pandas does the parsing when it
+        is installed. The ``csv`` fallback below produces identical records, so
+        nothing about the analysis depends on which path ran.
+        """
         text = payload.decode("utf-8-sig", errors="replace")
-        reader = csv.DictReader(io.StringIO(text))
+        rows = self._rows_via_pandas(text)
+        if rows is None:
+            rows = csv.DictReader(io.StringIO(text))
         added = 0
-        for row in reader:
+        for row in rows:
             try:
                 played = _parse_uk_date(row.get("Date", ""))
                 home = (row.get("HomeTeam") or "").strip()
                 away = (row.get("AwayTeam") or "").strip()
                 home_goals = row.get("FTHG")
                 away_goals = row.get("FTAG")
-                if not (played and home and away) or home_goals in (None, "") or away_goals in (None, ""):
+                if (
+                    not (played and home and away)
+                    or home_goals in (None, "")
+                    or away_goals in (None, "")
+                ):
                     continue
                 repository.add(
                     MatchResult(
@@ -537,6 +617,34 @@ class FootballDataCoUkLoader(ResultsLoader):
             except (ValueError, TypeError):
                 continue
         return added
+
+    @staticmethod
+    def _rows_via_pandas(text: str) -> list[dict[str, str]] | None:
+        """Parse with pandas, or return ``None`` when it is unavailable.
+
+        Only the six columns the repository needs are read. Everything is kept
+        as text so the loop below applies exactly the same coercion and the
+        same rejections whichever parser produced the rows.
+        """
+        try:
+            import pandas as pd
+        except ImportError:
+            return None
+        wanted = ["Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG"]
+        try:
+            frame = pd.read_csv(
+                io.StringIO(text),
+                usecols=lambda name: name in wanted,
+                dtype=str,
+                on_bad_lines="skip",
+            )
+        except Exception as exc:  # noqa: BLE001 - fall back rather than fail
+            log.debug("pandas could not read a season file", extra={"error": str(exc)})
+            return None
+        if not set(wanted).issubset(frame.columns):
+            return None
+        frame = frame.dropna(subset=wanted)
+        return frame[wanted].to_dict("records")
 
 
 def _parse_uk_date(raw: str) -> date | None:
@@ -556,7 +664,9 @@ class LocalResultsLoader(ResultsLoader):
     def __init__(self, path: str) -> None:
         self.path = Path(path)
 
-    def load(self, repository: ResultsRepository, fixtures: Sequence[Fixture]) -> list[SourceRecord]:
+    def load(
+        self, repository: ResultsRepository, fixtures: Sequence[Fixture]
+    ) -> list[SourceRecord]:
         if not self.path.is_file():
             log.warning("results CSV not found", extra={"path": str(self.path)})
             return [
@@ -626,7 +736,9 @@ class FootballDataOrgLoader(ResultsLoader):
         self.config = config
         self.downloader = CachedDownloader(config, "footballdataorg")
 
-    def load(self, repository: ResultsRepository, fixtures: Sequence[Fixture]) -> list[SourceRecord]:
+    def load(
+        self, repository: ResultsRepository, fixtures: Sequence[Fixture]
+    ) -> list[SourceRecord]:
         if not self.config.football_data_api_key:
             return []
         try:
@@ -637,7 +749,10 @@ class FootballDataOrgLoader(ResultsLoader):
 
         reference = min((f.match_day for f in fixtures), default=date.today())
         date_from = (reference - timedelta(days=365)).isoformat()
-        url = f"{self.BASE}/matches?dateFrom={date_from}&dateTo={reference.isoformat()}&status=FINISHED"
+        url = (
+            f"{self.BASE}/matches?dateFrom={date_from}"
+            f"&dateTo={reference.isoformat()}&status=FINISHED"
+        )
         try:
             response = requests.get(
                 url,
@@ -704,7 +819,11 @@ class StatisticsProvider:
     def __init__(self, config: Config, repository: ResultsRepository | None = None) -> None:
         self.config = config
         self.repository = repository if repository is not None else ResultsRepository()
+        #: Loader-level provenance: one row per feed that was fetched.
         self.sources: list[SourceRecord] = []
+        #: Per-fixture, per-statistic provenance for the ``Data Sources``
+        #: sheet (spec 10.4), including the notes that say what was missing.
+        self.fixture_sources: list[SourceRecord] = []
         self._loaded = False
 
     # -- loading -------------------------------------------------------
@@ -779,6 +898,7 @@ class StatisticsProvider:
 
         window = self.config.form_window
         source_note = ", ".join(sorted({s.source for s in self.sources})) or "no source"
+        endpoint = ", ".join(sorted({s.endpoint for s in self.sources if s.endpoint}))
 
         if home_key:
             stats.home_form = summarise_form(
@@ -829,19 +949,47 @@ class StatisticsProvider:
 
         stats.sources = [
             SourceRecord(
-                statistic=name,
+                statistic=f"{fixture.label}: {name}",
                 source=source_note,
+                endpoint=endpoint,
                 retrieved_at=now_utc(),
                 notes=note,
             )
             for name, note in (
-                ("head-to-head", f"{stats.h2h.meetings} meetings used" if stats.h2h.available else "unavailable"),
-                ("home form", f"{stats.home_form.matches} matches" if stats.home_form.available else "unavailable"),
-                ("away form", f"{stats.away_form.matches} matches" if stats.away_form.available else "unavailable"),
-                ("home split", f"{stats.home_home_split.matches} home matches" if stats.home_home_split.available else "unavailable"),
-                ("away split", f"{stats.away_away_split.matches} away matches" if stats.away_away_split.available else "unavailable"),
-                ("league baseline", f"{stats.league.matches} matches" if stats.league.available else "unavailable"),
+                (
+                    "head-to-head",
+                    f"{stats.h2h.meetings} meetings used" if stats.h2h.available else "unavailable",
+                ),
+                (
+                    "home form",
+                    f"{stats.home_form.matches} matches"
+                    if stats.home_form.available
+                    else "unavailable",
+                ),
+                (
+                    "away form",
+                    f"{stats.away_form.matches} matches"
+                    if stats.away_form.available
+                    else "unavailable",
+                ),
+                (
+                    "home split",
+                    f"{stats.home_home_split.matches} home matches"
+                    if stats.home_home_split.available
+                    else "unavailable",
+                ),
+                (
+                    "away split",
+                    f"{stats.away_away_split.matches} away matches"
+                    if stats.away_away_split.available
+                    else "unavailable",
+                ),
+                (
+                    "league baseline",
+                    f"{stats.league.matches} matches" if stats.league.available else "unavailable",
+                ),
                 ("supporting context", "no reliable source configured"),
             )
         ]
+        self.fixture_sources.extend(stats.sources)
         return stats

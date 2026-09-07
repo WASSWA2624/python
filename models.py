@@ -14,7 +14,7 @@ Two conventions hold throughout:
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from typing import Any
 
 try:  # Windows may lack the IANA database unless `tzdata` is installed.
@@ -24,7 +24,8 @@ try:  # Windows may lack the IANA database unless `tzdata` is installed.
 except Exception:  # pragma: no cover - fallback path
     EAT = timezone(timedelta(hours=3), name="EAT")
 
-UTC = timezone.utc
+#: ``UTC`` is re-exported from this module so that every stage of the
+#: pipeline takes its timezone constants from one place.
 
 #: Status values written to the workbook (spec 10.2).
 STATUS_ANALYSED = "Analysed"
@@ -95,7 +96,9 @@ class AnalysisWindow:
         )
 
     @classmethod
-    def next_hours(cls, day: date, hours: float, reference: datetime | None = None) -> AnalysisWindow:
+    def next_hours(
+        cls, day: date, hours: float, reference: datetime | None = None
+    ) -> AnalysisWindow:
         """From *reference* (default now) forward *hours*, clamped to the day.
 
         The start is clamped to the beginning of the match day too, so asking

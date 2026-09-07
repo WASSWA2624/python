@@ -137,13 +137,9 @@ def evaluate_qualification(record: MatchRecord, config: Config) -> tuple[bool, s
     if record.odds_over_15 is None:
         return False, REASON_NO_ODDS
     if record.odds_over_15 < config.min_odds:
-        return False, (
-            f"{REASON_ODDS_RANGE} ({record.odds_over_15:.2f} < {config.min_odds:.2f})"
-        )
+        return False, (f"{REASON_ODDS_RANGE} ({record.odds_over_15:.2f} < {config.min_odds:.2f})")
     if record.odds_over_15 > config.max_odds:
-        return False, (
-            f"{REASON_ODDS_RANGE} ({record.odds_over_15:.2f} > {config.max_odds:.2f})"
-        )
+        return False, (f"{REASON_ODDS_RANGE} ({record.odds_over_15:.2f} > {config.max_odds:.2f})")
     if record.value is None:
         return False, f"{REASON_NEGATIVE_EDGE} (value could not be computed)"
     if record.value < config.min_value:
@@ -186,7 +182,7 @@ def compute_scores(records: list[MatchRecord], config: Config) -> None:
 
     for record in records:
         record.score = None
-    for record, np_, nv in zip(scorable, norm_probability, norm_value):
+    for record, np_, nv in zip(scorable, norm_probability, norm_value, strict=True):
         record.score = config.w_probability * np_ + config.w_value * nv
 
 

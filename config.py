@@ -13,9 +13,10 @@ thresholds that produced it (spec 2.6).
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 # --------------------------------------------------------------------------
 # Section 9 - qualification thresholds
@@ -262,7 +263,11 @@ class Config:
             if raw is None:
                 continue
             try:
-                config.set(spec_field.name, _coerce(raw, getattr(config, spec_field.name)), SOURCE_ENV)
+                config.set(
+                    spec_field.name,
+                    _coerce(raw, getattr(config, spec_field.name)),
+                    SOURCE_ENV,
+                )
             except (TypeError, ValueError) as exc:
                 raise ValueError(
                     f"environment value for {spec_field.name!r} is invalid: {raw!r} ({exc})"
@@ -283,7 +288,8 @@ class Config:
 
         if not 0 < self.min_probability <= 100:
             problems.append(
-                f"min_probability must be greater than 0 and at most 100 (got {self.min_probability})"
+                "min_probability must be greater than 0 and at most 100 "
+                f"(got {self.min_probability})"
             )
         if self.min_odds < 1.01:
             problems.append(f"min_odds must be at least 1.01 (got {self.min_odds})")
@@ -323,19 +329,22 @@ class Config:
     # ------------------------------------------------------------------
     def effective_summary(self) -> list[tuple[str, str, str]]:
         """``(setting, value, source)`` triples for the Summary sheet."""
-        return [
-            ("Analysis window", f"{self.window_start}-{self.window_end} EAT", self.source_of("window")),
-            ("Minimum probability", f"{self.min_probability:.1f}%", self.source_of("min_probability")),
-            ("Minimum odds", f"{self.min_odds:.2f}", self.source_of("min_odds")),
-            ("Maximum odds", f"{self.max_odds:.2f}", self.source_of("max_odds")),
-            ("Minimum value", f"{self.min_value:+.3f}", self.source_of("min_value")),
-            ("Minimum H2H matches", str(self.min_h2h_matches), self.source_of("min_h2h_matches")),
-            ("Minimum form matches", str(self.min_form_matches), self.source_of("min_form_matches")),
-            ("Score weights", f"probability {self.w_probability:.2f} / value {self.w_value:.2f}", self.source_of("w_probability")),
-            ("Output directory", self.output_dir, self.source_of("output_dir")),
-            ("Statistics providers", self.stats_providers or "(none)", self.source_of("stats_providers")),
-            ("Dixon-Coles correction", "on" if self.use_dixon_coles else "off", self.source_of("use_dixon_coles")),
+        window = f"{self.window_start}-{self.window_end} EAT"
+        weights = f"probability {self.w_probability:.2f} / value {self.w_value:.2f}"
+        rows = [
+            ("Analysis window", window, "window"),
+            ("Minimum probability", f"{self.min_probability:.1f}%", "min_probability"),
+            ("Minimum odds", f"{self.min_odds:.2f}", "min_odds"),
+            ("Maximum odds", f"{self.max_odds:.2f}", "max_odds"),
+            ("Minimum value", f"{self.min_value:+.3f}", "min_value"),
+            ("Minimum H2H matches", str(self.min_h2h_matches), "min_h2h_matches"),
+            ("Minimum form matches", str(self.min_form_matches), "min_form_matches"),
+            ("Score weights", weights, "w_probability"),
+            ("Output directory", self.output_dir, "output_dir"),
+            ("Statistics providers", self.stats_providers or "(none)", "stats_providers"),
+            ("Dixon-Coles correction", "on" if self.use_dixon_coles else "off", "use_dixon_coles"),
         ]
+        return [(label, value, self.source_of(name)) for label, value, name in rows]
 
     def one_line(self) -> str:
         """Compact restatement of the promptable settings, for the log."""

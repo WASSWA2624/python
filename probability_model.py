@@ -52,13 +52,20 @@ GLOBAL_BASELINE_GOALS = 2.60
 
 #: Confidence bands (spec 5.4). Driven by sample size, how many independent
 #: components agreed, how far apart they were, and data completeness.
+#:
+#: Disagreement is measured *relative* to the mean component total rather than
+#: in goals. An absolute threshold would systematically rate high-scoring
+#: fixtures Low - a 0.9-goal spread is close agreement around an expected 4.0
+#: and poor agreement around an expected 1.8 - and since TOP PICK requires at
+#: least Medium confidence, that would quietly starve the top category in
+#: exactly the leagues this tool is looking for.
 CONFIDENCE_HIGH_MIN_SAMPLES = 10
 CONFIDENCE_HIGH_MIN_COMPONENTS = 4
-CONFIDENCE_HIGH_MAX_SPREAD = 0.80
+CONFIDENCE_HIGH_MAX_SPREAD = 0.25  # component range, as a share of their mean
 CONFIDENCE_HIGH_MIN_COMPLETENESS = 0.70
 CONFIDENCE_MEDIUM_MIN_SAMPLES = 5
 CONFIDENCE_MEDIUM_MIN_COMPONENTS = 3
-CONFIDENCE_MEDIUM_MAX_SPREAD = 1.50
+CONFIDENCE_MEDIUM_MAX_SPREAD = 0.40
 CONFIDENCE_MEDIUM_MIN_COMPLETENESS = 0.40
 
 
@@ -152,6 +159,7 @@ class ModelResult:
     confidence: str = "Low"
     data_completeness: float = 0.0
     n_effective: float = 0.0
+    #: Component disagreement, as a share of their mean expected total.
     spread: float | None = None
     components: dict[str, tuple[float, float, float]] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
@@ -173,12 +181,14 @@ def _split_total(total: float, home_share: float) -> tuple[float, float]:
 
 
 def _baseline_league(stats: MatchStatistics, config: Config) -> tuple[LeagueStats, float, bool]:
-    """League baseline goals and home share, falling back to the global prior."""
+    """``(league, baseline goals, using_prior)``.
+
+    Falls back to the documented global prior when the league has no measured
+    baseline; the caller records that in ``model_notes`` so a prior is never
+    mistaken for a statistic (spec 12).
+    """
     league = stats.league
     if league.available and league.avg_goals is not None:
-        share = league.home_goal_share
-        if share is None:
-            share = config.league_home_goal_share
         return league, float(league.avg_goals), False
     return league, GLOBAL_BASELINE_GOALS, True
 
@@ -195,7 +205,9 @@ def _component_recent_form(stats: MatchStatistics) -> tuple[float, float] | None
     return lam_home, lam_away
 
 
-def _component_home_away_split(stats: MatchStatistics, home_share: float) -> tuple[float, float] | None:
+def _component_home_away_split(
+    stats: MatchStatistics, home_share: float
+) -> tuple[float, float] | None:
     """Spec 4.3 - the home side at home, the away side away."""
     home, away = stats.home_home_split, stats.away_away_split
     if not (home.available and away.available):
@@ -210,10 +222,27 @@ def _component_home_away_split(stats: MatchStatistics, home_share: float) -> tup
     return None
 
 
+def smoothed_rate(rate: float, matches: int) -> float:
+    """Laplace-smooth an observed rate: ``(k + 1) / (n + 2)``.
+
+    A saturated sample must not be inverted literally. Ten Overs in ten
+    matches is an observed rate of 1.0, and ``lambda_from_over_15_rate``
+    would answer with its ceiling of twelve expected goals - an unbounded
+    extrapolation from a bounded sample, which then dominates the blend.
+    Adding one notional Over and one notional Under turns 10/10 into 11/12,
+    an expected total near 3.9 rather than 9.2. The correction shrinks as the
+    sample grows, which is the same principle as section 5.3 applied at the
+    level of a single component.
+    """
+    n = max(int(matches), 0)
+    successes = rate * n
+    return (successes + 1.0) / (n + 2.0)
+
+
 def _component_over15_rate(stats: MatchStatistics, home_share: float) -> tuple[float, float] | None:
     """Spec 5.2 - the observed Over 1.5 rate, inverted into expected goals."""
     rates = [
-        form.over15_rate
+        smoothed_rate(form.over15_rate, form.matches)
         for form in (stats.home_form, stats.away_form)
         if form.available and form.over15_rate is not None
     ]
@@ -223,7 +252,9 @@ def _component_over15_rate(stats: MatchStatistics, home_share: float) -> tuple[f
     return _split_total(lambda_from_over_15_rate(min(mean_rate, 0.999)), home_share)
 
 
-def _component_h2h(stats: MatchStatistics, config: Config, home_share: float) -> tuple[float, float] | None:
+def _component_h2h(
+    stats: MatchStatistics, config: Config, home_share: float
+) -> tuple[float, float] | None:
     """Spec 4.1 - previous meetings, already age-discounted by the provider."""
     h2h = stats.h2h
     if not h2h.available or h2h.meetings < config.min_h2h_matches:
@@ -250,7 +281,11 @@ def estimate(stats: MatchStatistics, config: Config) -> ModelResult:
     result = ModelResult(data_completeness=stats.completeness())
 
     league, baseline_goals, using_prior = _baseline_league(stats, config)
-    home_share = league.home_goal_share if league.home_goal_share is not None else config.league_home_goal_share
+    home_share = (
+        league.home_goal_share
+        if league.home_goal_share is not None
+        else config.league_home_goal_share
+    )
     home_share = min(0.95, max(0.05, float(home_share)))
     if using_prior:
         result.notes.append(
@@ -270,7 +305,9 @@ def estimate(stats: MatchStatistics, config: Config) -> ModelResult:
         ),
     }
 
-    available = {name: (pair, w) for name, (pair, w) in candidates.items() if pair is not None and w > 0}
+    available = {
+        name: (pair, w) for name, (pair, w) in candidates.items() if pair is not None and w > 0
+    }
 
     # The league prior alone is not evidence about *these* teams. Requiring at
     # least one team-specific component keeps the model from reporting a
@@ -284,7 +321,9 @@ def estimate(stats: MatchStatistics, config: Config) -> ModelResult:
     total_weight = sum(w for _, w in available.values())
     lam_home = sum(pair[0] * w for pair, w in available.values()) / total_weight
     lam_away = sum(pair[1] * w for pair, w in available.values()) / total_weight
-    result.components = {name: (pair[0], pair[1], w / total_weight) for name, (pair, w) in available.items()}
+    result.components = {
+        name: (pair[0], pair[1], w / total_weight) for name, (pair, w) in available.items()
+    }
 
     if len(available) < len(candidates):
         dropped = sorted(set(candidates) - set(available))
@@ -358,11 +397,19 @@ def _effective_sample_size(stats: MatchStatistics) -> float:
 
 
 def _component_spread(available: dict[str, tuple[tuple[float, float], float]]) -> float | None:
-    """Disagreement between components, as the range of their expected totals."""
+    """Disagreement between components, relative to their mean expected total.
+
+    Returns ``(max - min) / mean``, so 0.0 is perfect agreement and 0.25 means
+    the components span a quarter of what they collectively predict. Scale-free
+    by construction - see the confidence-band constants above.
+    """
     totals = [pair[0] + pair[1] for pair, _ in available.values()]
     if len(totals) < 2:
         return None
-    return max(totals) - min(totals)
+    mean = sum(totals) / len(totals)
+    if mean <= 0:
+        return None
+    return (max(totals) - min(totals)) / mean
 
 
 def _confidence(n_eff: float, components: int, spread: float | None, completeness: float) -> str:

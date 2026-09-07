@@ -1,0 +1,31 @@
+# Over 1.5 Goals - Match Analysis Tool
+# Python 3.11 or newer.  Install with:  pip install -r requirements.txt
+#
+# Playwright additionally needs its browser downloaded once:
+#     playwright install chromium
+
+# --- fixture collection ----------------------------------------------------
+playwright>=1.44          # browser automation for the JavaScript fixture list
+beautifulsoup4>=4.12      # HTML parsing of the rendered page
+requests>=2.31            # plain HTTP for statistics feeds and robots.txt
+
+# --- data processing and numerics -----------------------------------------
+pandas>=2.2               # bulk parsing of season result files
+numpy>=1.26               # numerics (also a pandas dependency)
+scipy>=1.11               # independent Poisson reference used by the tests
+
+# --- output ----------------------------------------------------------------
+openpyxl>=3.1             # the one library that reads and writes the workbook
+
+# --- data quality ----------------------------------------------------------
+rapidfuzz>=3.6            # team-name matching; falls back to difflib if absent
+
+# --- configuration ---------------------------------------------------------
+python-dotenv>=1.0        # .env loading; a built-in parser covers its absence
+
+# --- Windows timezone database --------------------------------------------
+tzdata>=2024.1            # Africa/Kampala on systems without an IANA database
+
+# --- development -----------------------------------------------------------
+pytest>=8.0
+ruff>=0.6

@@ -31,10 +31,11 @@ import re
 import time as time_module
 import urllib.error
 import urllib.request
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Sequence
+from typing import Any
 from urllib.parse import urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
@@ -63,7 +64,14 @@ CSV_ALIASES: dict[str, tuple[str, ...]] = {
     "home_team": ("home_team", "home", "hometeam", "home team", "team_home"),
     "away_team": ("away_team", "away", "awayteam", "away team", "team_away"),
     "kickoff_utc": ("kickoff_utc", "kick_off_utc", "kickoff utc", "start_utc"),
-    "kickoff_eat": ("kickoff_eat", "kick_off_eat", "kickoff eat", "kickoff", "start_time", "kick_off"),
+    "kickoff_eat": (
+        "kickoff_eat",
+        "kick_off_eat",
+        "kickoff eat",
+        "kickoff",
+        "start_time",
+        "kick_off",
+    ),
     "date": ("date", "match_date", "match date"),
     "time": ("time", "kickoff_time", "start"),
     "odds_over_15": ("odds_over_15", "over_15", "over1.5", "o1.5", "over 1.5", "over15"),
@@ -79,9 +87,33 @@ CSV_ALIASES: dict[str, tuple[str, ...]] = {
 
 #: Key aliases used when reading a structured JSON payload.
 JSON_HOME_KEYS = ("home", "hometeam", "home_team", "homename", "competitor1", "team1", "localteam")
-JSON_AWAY_KEYS = ("away", "awayteam", "away_team", "awayname", "competitor2", "team2", "visitorteam")
-JSON_TIME_KEYS = ("starttime", "start_time", "kickoff", "kickofftime", "startdate", "date", "eventdate", "scheduled")
-JSON_LEAGUE_KEYS = ("league", "competition", "tournament", "category", "leaguename", "competitionname")
+JSON_AWAY_KEYS = (
+    "away",
+    "awayteam",
+    "away_team",
+    "awayname",
+    "competitor2",
+    "team2",
+    "visitorteam",
+)
+JSON_TIME_KEYS = (
+    "starttime",
+    "start_time",
+    "kickoff",
+    "kickofftime",
+    "startdate",
+    "date",
+    "eventdate",
+    "scheduled",
+)
+JSON_LEAGUE_KEYS = (
+    "league",
+    "competition",
+    "tournament",
+    "category",
+    "leaguename",
+    "competitionname",
+)
 
 _DECIMAL = re.compile(r"^\s*(\d+(?:[.,]\d+)?)\s*$")
 _TIME_IN_TEXT = re.compile(r"\b([01]?\d|2[0-3])[:.]([0-5]\d)\b")
@@ -129,10 +161,16 @@ def check_robots(url: str, user_agent: str, timeout: float = 15.0) -> RobotsDeci
             body = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
-            return RobotsDecision(True, f"{robots_url} returned 404; no crawling restrictions published")
-        return RobotsDecision(None, f"{robots_url} returned HTTP {exc.code}; crawling policy unknown")
+            return RobotsDecision(
+                True, f"{robots_url} returned 404; no crawling restrictions published"
+            )
+        return RobotsDecision(
+            None, f"{robots_url} returned HTTP {exc.code}; crawling policy unknown"
+        )
     except Exception as exc:  # noqa: BLE001 - network errors are all equivalent here
-        return RobotsDecision(None, f"{robots_url} could not be fetched ({exc}); crawling policy unknown")
+        return RobotsDecision(
+            None, f"{robots_url} could not be fetched ({exc}); crawling policy unknown"
+        )
 
     parser = RobotFileParser()
     parser.parse(body.splitlines())
@@ -212,9 +250,14 @@ def parse_kickoff(
         pass
 
     for fmt in (
-        "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M",
-        "%d-%m-%Y %H:%M", "%m-%d-%Y %H:%M", "%d-%m-%y %H:%M",
-        "%Y-%m-%d", "%d-%m-%Y",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M",
+        "%d-%m-%Y %H:%M",
+        "%m-%d-%Y %H:%M",
+        "%d-%m-%y %H:%M",
+        "%Y-%m-%d",
+        "%d-%m-%Y",
     ):
         try:
             parsed = datetime.strptime(normalised, fmt)
@@ -243,6 +286,16 @@ def _header_index(fieldnames: Sequence[str]) -> dict[str, str]:
                 lookup[canonical] = lowered[alias]
                 break
     return lookup
+
+
+def _field_reader(row: dict, index: dict[str, str]) -> Callable[[str], str]:
+    """A reader bound to one CSV row, returning "" for absent columns."""
+
+    def get(field: str) -> str:
+        column = index.get(field)
+        return (row.get(column) or "").strip() if column else ""
+
+    return get
 
 
 def parse_fixtures_csv(
@@ -275,10 +328,7 @@ def parse_fixtures_csv(
             )
 
         for line_number, row in enumerate(reader, start=2):
-            def get(field: str) -> str:
-                column = index.get(field)
-                return (row.get(column) or "").strip() if column else ""
-
+            get = _field_reader(row, index)
             home, away = get("home_team"), get("away_team")
             if not home or not away:
                 log.warning("skipping CSV row with a missing team", extra={"line": line_number})
@@ -288,7 +338,9 @@ def parse_fixtures_csv(
             if get("kickoff_utc"):
                 kickoff = parse_kickoff(get("kickoff_utc"), assume="UTC")
             if kickoff is None and get("kickoff_eat"):
-                kickoff = parse_kickoff(get("kickoff_eat"), assume="EAT", reference_day=reference_day)
+                kickoff = parse_kickoff(
+                    get("kickoff_eat"), assume="EAT", reference_day=reference_day
+                )
             if kickoff is None and get("date"):
                 combined = f"{get('date')} {get('time')}".strip()
                 kickoff = parse_kickoff(combined, assume="EAT", reference_day=reference_day)
@@ -375,7 +427,9 @@ def _find_over_under_odds(node: dict) -> tuple[float | None, float | None]:
         )
         if "1.5" not in blob:
             continue
-        price = _first_key(candidate, ("odds", "price", "value", "decimal", "oddsdecimal", "coefficient"))
+        price = _first_key(
+            candidate, ("odds", "price", "value", "decimal", "oddsdecimal", "coefficient")
+        )
         price = parse_decimal_odds(price)
         if price is None:
             continue
@@ -562,8 +616,16 @@ def _fixture_from_row(
         return None
 
     league = _select_text(row, config.selector_league) or _infer_league(row)
-    over = parse_decimal_odds(_select_text(row, config.selector_over15)) if config.selector_over15 else None
-    under = parse_decimal_odds(_select_text(row, config.selector_under15)) if config.selector_under15 else None
+    over = (
+        parse_decimal_odds(_select_text(row, config.selector_over15))
+        if config.selector_over15
+        else None
+    )
+    under = (
+        parse_decimal_odds(_select_text(row, config.selector_under15))
+        if config.selector_under15
+        else None
+    )
     if over is None:
         over, under_guess = _odds_near_label(text, "1.5")
         under = under if under is not None else under_guess
@@ -636,8 +698,15 @@ def dedupe_fixtures(fixtures: Iterable[Fixture]) -> list[Fixture]:
             merged[key] = fixture
             continue
         for field_name in (
-            "odds_over_15", "odds_under_15", "odds_over_25", "odds_under_25",
-            "odds_home", "odds_draw", "odds_away", "odds_btts_yes", "odds_btts_no",
+            "odds_over_15",
+            "odds_under_15",
+            "odds_over_25",
+            "odds_under_25",
+            "odds_home",
+            "odds_draw",
+            "odds_away",
+            "odds_btts_yes",
+            "odds_btts_no",
         ):
             new_value = getattr(fixture, field_name)
             if new_value is not None:
@@ -647,7 +716,9 @@ def dedupe_fixtures(fixtures: Iterable[Fixture]) -> list[Fixture]:
     return list(merged.values())
 
 
-def filter_upcoming(fixtures: Iterable[Fixture], reference: datetime | None = None) -> list[Fixture]:
+def filter_upcoming(
+    fixtures: Iterable[Fixture], reference: datetime | None = None
+) -> list[Fixture]:
     """Keep only fixtures whose kick-off is strictly in the future (spec 1)."""
     moment = to_utc(reference or now_utc())
     return [f for f in fixtures if f.kickoff_utc > moment]
@@ -686,7 +757,9 @@ class GsbScraper:
             return None
         age = now_utc() - datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
         if age > timedelta(minutes=self.config.cache_ttl_minutes):
-            log.debug("cache expired", extra={"file": str(path), "age_minutes": age.total_seconds() / 60})
+            log.debug(
+                "cache expired", extra={"file": str(path), "age_minutes": age.total_seconds() / 60}
+            )
             return None
         log.info("using cached page", extra={"file": str(path)})
         return path.read_text(encoding="utf-8")
@@ -809,7 +882,9 @@ class GsbScraper:
                 if config.json_sniff:
                     page.on("response", on_response)
 
-                page.goto(config.gsb_url, wait_until="domcontentloaded", timeout=config.page_timeout_ms)
+                page.goto(
+                    config.gsb_url, wait_until="domcontentloaded", timeout=config.page_timeout_ms
+                )
                 try:
                     page.wait_for_load_state("networkidle", timeout=config.page_timeout_ms)
                 except Exception:  # noqa: BLE001 - a busy page never goes idle
@@ -834,8 +909,13 @@ class GsbScraper:
     def _expand_all(self, page: Any) -> None:
         """Scroll and click through lazy-loaded and paginated sections (spec 3.1)."""
         expand_labels = (
-            "show more", "load more", "see more", "more matches", "view all",
-            "show all", "next page",
+            "show more",
+            "load more",
+            "see more",
+            "more matches",
+            "view all",
+            "show all",
+            "next page",
         )
         previous_height = -1
         for pass_number in range(self.config.scroll_passes):

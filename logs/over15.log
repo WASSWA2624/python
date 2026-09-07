@@ -15,3 +15,13 @@
 {"ts": "2026-09-07T20:50:16.754405+00:00", "level": "INFO", "logger": "over15.stats", "message": "statistics loaded", "results": 300, "teams": 14}
 {"ts": "2026-09-07T20:50:16.780059+00:00", "level": "INFO", "logger": "over15.excel", "message": "loaded existing workbook", "path": "_demo\\results\\2026-09-08.xlsx", "rows": 7}
 {"ts": "2026-09-07T20:50:16.928351+00:00", "level": "INFO", "logger": "over15.excel", "message": "workbook written", "path": "_demo\\results\\2026-09-08.xlsx", "rows": 7}
+{"ts": "2026-09-07T20:56:32.663700+00:00", "level": "INFO", "logger": "over15.main", "message": "effective configuration", "config": "window=00:00-23:59 EAT (default) | min_probability=70.0% (default) | min_odds=1.20 (default)"}
+{"ts": "2026-09-07T20:56:32.664816+00:00", "level": "INFO", "logger": "over15.scraper", "message": "loaded fixtures from CSV", "file": "_demo\\fixtures.csv", "count": 7}
+{"ts": "2026-09-07T20:56:32.665308+00:00", "level": "INFO", "logger": "over15.main", "message": "fixtures collected", "count": 7, "day": "2026-09-08", "source": "manual fixture list (_demo/fixtures.csv)"}
+{"ts": "2026-09-07T20:56:32.671291+00:00", "level": "INFO", "logger": "over15.stats", "message": "statistics loaded", "results": 300, "teams": 14}
+{"ts": "2026-09-07T20:56:32.796808+00:00", "level": "INFO", "logger": "over15.excel", "message": "workbook written", "path": "C:\\Users\\WASSWA~1\\AppData\\Local\\Temp\\claude\\D--coding-apps-python\\00293889-445d-400e-ba2b-b79e28cf868d\\scratchpad\\out\\2026-09-08.xlsx", "rows": 7}
+{"ts": "2026-09-07T21:02:50.948839+00:00", "level": "INFO", "logger": "over15.main", "message": "effective configuration", "config": "window=00:00-23:59 EAT (default) | min_probability=70.0% (default) | min_odds=1.20 (default)"}
+{"ts": "2026-09-07T21:02:50.949910+00:00", "level": "INFO", "logger": "over15.scraper", "message": "loaded fixtures from CSV", "file": "_demo\\fixtures.csv", "count": 7}
+{"ts": "2026-09-07T21:02:50.950699+00:00", "level": "INFO", "logger": "over15.main", "message": "fixtures collected", "count": 7, "day": "2026-09-08", "source": "manual fixture list (_demo/fixtures.csv)"}
+{"ts": "2026-09-07T21:02:50.958294+00:00", "level": "INFO", "logger": "over15.stats", "message": "statistics loaded", "results": 300, "teams": 14}
+{"ts": "2026-09-07T21:02:51.092533+00:00", "level": "INFO", "logger": "over15.excel", "message": "workbook written", "path": "C:\\Users\\WASSWA~1\\AppData\\Local\\Temp\\claude\\D--coding-apps-python\\00293889-445d-400e-ba2b-b79e28cf868d\\scratchpad\\out\\2026-09-08.xlsx", "rows": 7}

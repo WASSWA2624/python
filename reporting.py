@@ -11,10 +11,10 @@ wondering whether the run failed.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
-from typing import Sequence
 
 from config import DISCLAIMER, Config
 from models import AnalysisWindow, MatchRecord
@@ -79,20 +79,22 @@ def build_rationale(record: MatchRecord) -> str:
         )
     if record.away_form_2plus is not None and record.away_form_matches:
         form_clauses.append(
-            f"{record.away_team} in {record.away_form_2plus} of "
-            f"{record.away_form_matches}"
+            f"{record.away_team} in {record.away_form_2plus} of {record.away_form_matches}"
         )
     if form_clauses:
         parts.append("; ".join(form_clauses) + ".")
 
     if record.h2h_matches and record.h2h_2plus is not None:
         parts.append(
-            f"Their last {record.h2h_matches} meetings went Over 1.5 "
-            f"{record.h2h_2plus} times."
+            f"Their last {record.h2h_matches} meetings went Over 1.5 {record.h2h_2plus} times."
         )
 
     if record.implied_fair is not None and record.value is not None:
-        adjusted = "Fair implied probability" if record.margin_adjusted else "Implied probability (margin unadjusted)"
+        adjusted = (
+            "Fair implied probability"
+            if record.margin_adjusted
+            else "Implied probability (margin unadjusted)"
+        )
         parts.append(
             f"{adjusted} {format_probability(record.implied_fair)}, giving an edge of "
             f"{format_points(record.value)} points."
@@ -141,7 +143,7 @@ def build_report(outcome: RunOutcome) -> list[str]:
 
     lines.append("")
     lines.append("=" * 72)
-    lines.append(f"DATE: {outcome.match_day:%-d %B %Y}" if _supports_dash_d() else f"DATE: {_long_date(outcome.match_day)}")
+    lines.append(f"DATE: {_long_date(outcome.match_day)}")
     lines.append(f"WINDOW: {outcome.window.label} EAT")
     lines.append(
         f"THRESHOLDS: min probability {config.min_probability:.1f}% | "
@@ -236,16 +238,12 @@ def _nothing_qualified_lines(outcome: RunOutcome) -> list[str]:
     return lines
 
 
-def _supports_dash_d() -> bool:
-    """``%-d`` is a glibc extension and is not available on Windows."""
-    try:
-        datetime(2026, 9, 7).strftime("%-d")
-        return True
-    except (ValueError, TypeError):
-        return False
-
-
 def _long_date(value: date) -> str:
+    """``7 September 2026``.
+
+    Built from the parts rather than with ``%-d``, which is a glibc extension
+    and raises on Windows - the platform the spec targets.
+    """
     return f"{value.day} {value:%B %Y}"
 
 

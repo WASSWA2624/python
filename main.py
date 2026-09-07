@@ -24,9 +24,9 @@ from __future__ import annotations
 import argparse
 import sys
 import time as time_module
+from collections.abc import Sequence
 from datetime import date, datetime
 from pathlib import Path
-from typing import Sequence
 
 import gsb_scraper
 import odds as odds_module
@@ -36,7 +36,6 @@ from excel_writer import ExcelStore, WorkbookLockedError, build_summary_rows, me
 from models import (
     STATUS_ANALYSED,
     STATUS_OUTSIDE_WINDOW,
-    AnalysisWindow,
     Fixture,
     MatchRecord,
     MatchStatistics,
@@ -84,7 +83,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--min-probability", type=float, metavar="PCT",
+        "--min-probability",
+        type=float,
+        metavar="PCT",
         help="minimum model probability, in percent",
     )
     parser.add_argument(
@@ -97,7 +98,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true", help="analyse without writing Excel")
 
     parser.add_argument(
-        "--allow-scraping", action="store_true",
+        "--allow-scraping",
+        action="store_true",
         help=(
             "opt in to collecting fixtures from the sportsbook with a browser. "
             "Off by default: see the access policy in gsb_scraper.py"
@@ -105,17 +107,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--results", metavar="PATH", help="a local results CSV for statistics")
     parser.add_argument(
-        "--stats-providers", metavar="LIST",
+        "--stats-providers",
+        metavar="LIST",
         help="comma-separated statistics providers, or 'none'",
     )
     parser.add_argument("--no-cache", action="store_true", help="ignore cached pages and feeds")
     parser.add_argument(
-        "--dixon-coles", nargs="?", const=0.08, type=float, metavar="RHO",
+        "--dixon-coles",
+        nargs="?",
+        const=0.08,
+        type=float,
+        metavar="RHO",
         help="apply the Dixon-Coles low-score correction (default rho 0.08)",
     )
     parser.add_argument(
-        "--log-level", default=None,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="console log level",
+        "--log-level",
+        default=None,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="console log level",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
@@ -235,9 +244,7 @@ def analyse_fixture(
     """Statistics, model, and odds comparison for one fixture."""
     stats = provider.statistics_for(fixture)
     model = probability_model.estimate(stats, config)
-    assessment = odds_module.assess(
-        model.probability, fixture.odds_over_15, fixture.odds_under_15
-    )
+    assessment = odds_module.assess(model.probability, fixture.odds_over_15, fixture.odds_under_15)
     return build_record(fixture, stats, model, assessment)
 
 
@@ -341,9 +348,7 @@ def run(argv: Sequence[str] | None = None) -> int:
                 extra={"match": fixture.label, "league": fixture.league, "error": str(exc)},
                 exc_info=True,
             )
-            fresh.append(
-                record_for_unanalysed(fixture, STATUS_ANALYSED, f"Analysis failed: {exc}")
-            )
+            fresh.append(record_for_unanalysed(fixture, STATUS_ANALYSED, f"Analysis failed: {exc}"))
 
     for fixture in outside_window:
         fresh.append(
@@ -397,7 +402,9 @@ def run(argv: Sequence[str] | None = None) -> int:
             by_category=summary.by_category,
             fixture_source=fixture_source,
         )
-        sources: list[SourceRecord] = list(provider.sources)
+        # Loader-level rows first, then the per-fixture, per-statistic rows
+        # section 10.4 asks for - including the ones marked unavailable.
+        sources: list[SourceRecord] = [*provider.sources, *provider.fixture_sources]
         try:
             output_path = store.save(
                 merged.records,

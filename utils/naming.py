@@ -15,7 +15,7 @@ import hashlib
 import json
 import re
 import unicodedata
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 
@@ -44,10 +44,39 @@ except ImportError:  # pragma: no cover
 #: Affixes carrying no identifying information that differ between sources.
 _NOISE_TOKENS = frozenset(
     {
-        "fc", "afc", "cf", "sc", "ac", "as", "ss", "sv", "fk", "sk", "bk", "if",
-        "ik", "cd", "ca", "cs", "ud", "sd", "rc", "us", "nk", "hk", "mfk",
-        "club", "clube", "calcio", "futbol", "football", "futebol", "soccer",
-        "the", "de", "of",
+        "fc",
+        "afc",
+        "cf",
+        "sc",
+        "ac",
+        "as",
+        "ss",
+        "sv",
+        "fk",
+        "sk",
+        "bk",
+        "if",
+        "ik",
+        "cd",
+        "ca",
+        "cs",
+        "ud",
+        "sd",
+        "rc",
+        "us",
+        "nk",
+        "hk",
+        "mfk",
+        "club",
+        "clube",
+        "calcio",
+        "futbol",
+        "football",
+        "futebol",
+        "soccer",
+        "the",
+        "de",
+        "of",
     }
 )
 
@@ -111,7 +140,8 @@ _alias_overrides: dict[str, str] = {}
 def load_aliases(path: str | Path | None) -> int:
     """Merge a JSON ``{"alias": "canonical"}`` file into the alias map.
 
-    Returns the number of aliases loaded. A missing file is not an error.
+    Returns the number of aliases loaded. A missing file is not an error, and
+    keys beginning with ``_`` are treated as comments rather than aliases.
     """
     global _alias_overrides
     if path is None:
@@ -122,7 +152,12 @@ def load_aliases(path: str | Path | None) -> int:
     data = json.loads(file.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"{file} must contain a JSON object of alias -> canonical name")
-    added = {str(k).strip().lower(): str(v).strip().lower() for k, v in data.items()}
+    # Keys beginning with an underscore are file-level notes, not aliases.
+    added = {
+        str(k).strip().lower(): str(v).strip().lower()
+        for k, v in data.items()
+        if not str(k).startswith("_")
+    }
     _alias_overrides = {**_alias_overrides, **added}
     _canonical_cached.cache_clear()
     return len(added)
@@ -236,8 +271,8 @@ def make_match_key(league: str, home: str, away: str, kickoff_utc: datetime) -> 
     seconds of drift between collections does not mint a new key.
     """
     if kickoff_utc.tzinfo is None:
-        kickoff_utc = kickoff_utc.replace(tzinfo=timezone.utc)
-    stamp = kickoff_utc.astimezone(timezone.utc).replace(second=0, microsecond=0)
+        kickoff_utc = kickoff_utc.replace(tzinfo=UTC)
+    stamp = kickoff_utc.astimezone(UTC).replace(second=0, microsecond=0)
     payload = "|".join(
         (
             normalise_league(league),
